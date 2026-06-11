@@ -1,0 +1,767 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Thin Film Interference Simulation</title>
+  <style>
+    :root {
+      --panel-border: #b7bdc8;
+      --controls-bg: #f6f7f9;
+      --divider-bg: #d5d9e2;
+      --text: #222;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text);
+      background: #eceff3;
+    }
+
+    .app {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      min-width: 760px;
+    }
+
+    .canvas-shell {
+      flex: 1 1 auto;
+      min-height: 480px;
+      overflow: auto;
+      background: white;
+    }
+
+    #simCanvas {
+      display: block;
+      width: 100%;
+      min-width: 1100px;
+      height: 100%;
+      background: white;
+    }
+
+    .divider {
+      flex: 0 0 10px;
+      background: linear-gradient(#e3e6ec, var(--divider-bg), #c8ced9);
+      border-top: 1px solid var(--panel-border);
+      border-bottom: 1px solid var(--panel-border);
+      cursor: row-resize;
+      position: relative;
+    }
+
+    .divider::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 3px;
+      width: 42px;
+      height: 4px;
+      transform: translateX(-50%);
+      border-top: 1px solid #9ca4b2;
+      border-bottom: 1px solid #9ca4b2;
+    }
+
+    .controls {
+      flex: 0 0 205px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      background: var(--controls-bg);
+      padding: 8px 12px 10px;
+    }
+
+    .control-grid {
+      display: grid;
+      grid-template-columns: 190px minmax(260px, 1fr) 70px;
+      gap: 6px 12px;
+      align-items: center;
+      max-width: 1200px;
+    }
+
+    .control-grid label.row-label {
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    .control-grid output {
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .rgb-box,
+    .playback {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 14px;
+    }
+
+    .rgb-box label {
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    input[type="range"] {
+      width: 100%;
+    }
+
+    button {
+      font: inherit;
+      padding: 4px 12px;
+      border: 1px solid #9aa3b0;
+      border-radius: 4px;
+      background: linear-gradient(#fff, #e9ebef);
+      cursor: pointer;
+    }
+
+    button:active {
+      background: linear-gradient(#dfe3e9, #f6f7f9);
+    }
+
+    .hint {
+      grid-column: 1 / -1;
+      font-size: 12px;
+      color: #555;
+      padding-top: 2px;
+    }
+
+    @media (max-height: 720px) {
+      .canvas-shell {
+        min-height: 360px;
+      }
+
+      .controls {
+        flex-basis: 180px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app" aria-label="Thin Film Interference Simulation">
+    <section class="canvas-shell" id="canvasShell">
+      <canvas id="simCanvas"></canvas>
+    </section>
+
+    <div class="divider" id="divider" title="Drag to resize controls"></div>
+
+    <section class="controls" id="controls">
+      <div class="control-grid">
+        <label class="row-label">Show colors:</label>
+        <div class="rgb-box">
+          <label><input type="checkbox" id="redToggle" checked> Red (660 nm)</label>
+          <label><input type="checkbox" id="greenToggle" checked> Green (540 nm)</label>
+          <label><input type="checkbox" id="blueToggle" checked> Blue (440 nm)</label>
+        </div>
+        <span></span>
+
+        <label class="row-label" for="n1Slider">n₁&nbsp; (left material):</label>
+        <input id="n1Slider" type="range" min="100" max="300" value="100" />
+        <output id="n1Value">1.00</output>
+
+        <label class="row-label" for="nFilmSlider">n&nbsp;&nbsp; (thin film):</label>
+        <input id="nFilmSlider" type="range" min="100" max="300" value="150" />
+        <output id="nFilmValue">1.50</output>
+
+        <label class="row-label" for="n2Slider">n₂&nbsp; (right material):</label>
+        <input id="n2Slider" type="range" min="100" max="300" value="100" />
+        <output id="n2Value">1.00</output>
+
+        <label class="row-label" for="thicknessSlider">Film thickness t (nm):</label>
+        <input id="thicknessSlider" type="range" min="50" max="1500" value="280" />
+        <output id="thicknessValue">280 nm</output>
+
+        <label class="row-label" for="speedSlider">Animation speed:</label>
+        <input id="speedSlider" type="range" min="0" max="30" value="12" />
+        <output id="speedValue">1.0x</output>
+
+        <label class="row-label">Playback:</label>
+        <div class="playback">
+          <button id="pauseButton" type="button">⏸ Pause</button>
+          <button id="resetButton" type="button">↻ Reset</button>
+        </div>
+        <span></span>
+
+        <div class="hint">Spacebar toggles pause. Drag the divider to resize the simulation/control split.</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    "use strict";
+
+    const canvas = document.getElementById("simCanvas");
+    const ctx = canvas.getContext("2d");
+    const canvasShell = document.getElementById("canvasShell");
+    const controls = document.getElementById("controls");
+    const divider = document.getElementById("divider");
+
+    const ui = {
+      redToggle: document.getElementById("redToggle"),
+      greenToggle: document.getElementById("greenToggle"),
+      blueToggle: document.getElementById("blueToggle"),
+
+      n1Slider: document.getElementById("n1Slider"),
+      nFilmSlider: document.getElementById("nFilmSlider"),
+      n2Slider: document.getElementById("n2Slider"),
+      thicknessSlider: document.getElementById("thicknessSlider"),
+      speedSlider: document.getElementById("speedSlider"),
+
+      n1Value: document.getElementById("n1Value"),
+      nFilmValue: document.getElementById("nFilmValue"),
+      n2Value: document.getElementById("n2Value"),
+      thicknessValue: document.getElementById("thicknessValue"),
+      speedValue: document.getElementById("speedValue"),
+
+      pauseButton: document.getElementById("pauseButton"),
+      resetButton: document.getElementById("resetButton")
+    };
+
+    // Fixed RGB wavelengths in nm.
+    const WL = [660.0, 540.0, 440.0];
+
+    // Pure RGB colors used to draw each channel and build the net swatch.
+    const PURE = [
+      [255, 40, 40],
+      [40, 220, 70],
+      [60, 130, 255]
+    ];
+
+    // Pale tints for the three media regions.
+    const TINT_M1 = [255, 252, 200];
+    const TINT_FILM = [220, 215, 255];
+    const TINT_M2 = [255, 215, 225];
+
+    // Amplitude coefficient for each reflected beam, in units of incident amplitude.
+    const R_AMP_COEFF = 0.5;
+
+    const pxPerNm = 0.25;
+    const labelColWidth = 175;
+    const filmLeftX = 620;
+
+    /*
+      Shared on-screen vacuum phase velocity in px per time-unit.
+      Each color derives its omega from its own vacuum wavenumber:
+          k_vac = 2π / (lambda_vacuum * pxPerNm)
+          omega = V_SCROLL * k_vac
+      That same omega is reused in every region for that color, while
+      spatial wavenumber k = n * k_vac changes by medium.
+    */
+    const V_SCROLL = 0.5;
+
+    const state = {
+      time: 0,
+      speed: 1.0,
+      n1: 1.0,
+      nFilm: 1.5,
+      n2: 1.0,
+      thickness: 280,
+      enabled: [true, true, true],
+      running: true,
+      dpr: 1,
+      cssWidth: 1100,
+      cssHeight: 760
+    };
+
+    function rgb(color) {
+      return `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+    }
+
+    function rgba(color, alpha) {
+      return `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha})`;
+    }
+
+    function clamp01(x) {
+      return Math.max(0, Math.min(1, x));
+    }
+
+    function reflectedIntensity(wl, n1, nFilm, n2, t) {
+      const phi1 = (nFilm > n1) ? Math.PI : 0;
+      const phi2 = (n2 > nFilm) ? Math.PI : 0;
+      const delta = 4 * Math.PI * nFilm * t / wl + (phi2 - phi1);
+      return (1 + Math.cos(delta)) / 2;
+    }
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+
+      state.cssWidth = Math.max(1, rect.width);
+      state.cssHeight = Math.max(1, rect.height);
+      state.dpr = dpr;
+
+      const nextWidth = Math.round(state.cssWidth * dpr);
+      const nextHeight = Math.round(state.cssHeight * dpr);
+
+      if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
+        canvas.width = nextWidth;
+        canvas.height = nextHeight;
+      }
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    const ro = new ResizeObserver(resizeCanvas);
+    ro.observe(canvasShell);
+    ro.observe(canvas);
+
+    function updateFromControls() {
+      state.enabled[0] = ui.redToggle.checked;
+      state.enabled[1] = ui.greenToggle.checked;
+      state.enabled[2] = ui.blueToggle.checked;
+
+      state.n1 = Number(ui.n1Slider.value) / 100.0;
+      state.nFilm = Number(ui.nFilmSlider.value) / 100.0;
+      state.n2 = Number(ui.n2Slider.value) / 100.0;
+      state.thickness = Number(ui.thicknessSlider.value);
+      state.speed = Number(ui.speedSlider.value) / 12.0;
+
+      ui.n1Value.textContent = state.n1.toFixed(2);
+      ui.nFilmValue.textContent = state.nFilm.toFixed(2);
+      ui.n2Value.textContent = state.n2.toFixed(2);
+      ui.thicknessValue.textContent = `${Math.round(state.thickness)} nm`;
+      ui.speedValue.textContent = `${state.speed.toFixed(1)}x`;
+    }
+
+    [
+      ui.redToggle,
+      ui.greenToggle,
+      ui.blueToggle,
+      ui.n1Slider,
+      ui.nFilmSlider,
+      ui.n2Slider,
+      ui.thicknessSlider,
+      ui.speedSlider
+    ].forEach(el => {
+      el.addEventListener("input", updateFromControls);
+      el.addEventListener("change", updateFromControls);
+    });
+
+    function togglePause() {
+      state.running = !state.running;
+      ui.pauseButton.textContent = state.running ? "⏸ Pause" : "▶ Play";
+    }
+
+    ui.pauseButton.addEventListener("click", togglePause);
+    ui.resetButton.addEventListener("click", () => {
+      state.time = 0;
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.code !== "Space") return;
+
+      const tag = document.activeElement ? document.activeElement.tagName : "";
+      if (tag === "INPUT") return;
+
+      event.preventDefault();
+      togglePause();
+    });
+
+    // Draggable vertical split, matching the original JSplitPane idea.
+    let resizingControls = false;
+
+    divider.addEventListener("pointerdown", (event) => {
+      resizingControls = true;
+      divider.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+
+    divider.addEventListener("pointermove", (event) => {
+      if (!resizingControls) return;
+      const appHeight = document.documentElement.clientHeight;
+      const dividerH = divider.getBoundingClientRect().height;
+      const minControls = 125;
+      const maxControls = Math.max(180, appHeight - 360 - dividerH);
+      const nextControlsHeight = Math.max(
+        minControls,
+        Math.min(maxControls, appHeight - event.clientY - dividerH / 2)
+      );
+
+      controls.style.flexBasis = `${nextControlsHeight}px`;
+      resizeCanvas();
+    });
+
+    divider.addEventListener("pointerup", (event) => {
+      resizingControls = false;
+      try {
+        divider.releasePointerCapture(event.pointerId);
+      } catch (_) {
+        // Ignore release errors from browsers that already released capture.
+      }
+    });
+
+    function clearCanvas(width, height) {
+      ctx.clearRect(0, 0, width, height);
+    }
+
+    function drawCenteredString(text, cx, cy) {
+      const metrics = ctx.measureText(text);
+      ctx.fillText(text, cx - metrics.width / 2, cy);
+    }
+
+    function drawLine(x1, y1, x2, y2) {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    function splitInHalf(s) {
+      const mid = Math.floor(s.length / 2);
+      let splitAt = -1;
+
+      for (let d = 0; d < s.length; d++) {
+        if (mid + d < s.length && s.charAt(mid + d) === " ") {
+          splitAt = mid + d;
+          break;
+        }
+        if (mid - d >= 0 && s.charAt(mid - d) === " ") {
+          splitAt = mid - d;
+          break;
+        }
+      }
+
+      if (splitAt < 0) return [s];
+      return [s.substring(0, splitAt), s.substring(splitAt + 1)];
+    }
+
+    function drawSwatchGroup(title, cx, cy, intensities) {
+      const box = 22;
+      const gap = 4;
+      const totalW = 4 * box + 3 * gap;
+      const startX = cx - totalW / 2;
+      const yBox = cy - box / 2;
+
+      ctx.fillStyle = "rgb(30, 30, 30)";
+      ctx.font = "700 12px Sans-Serif";
+      ctx.textBaseline = "alphabetic";
+
+      const lines = title.length > 14 ? splitInHalf(title) : [title];
+      const fontHeight = 14;
+      let titleY = cy - box / 2 - 6 - (lines.length - 1) * fontHeight;
+
+      for (const line of lines) {
+        drawCenteredString(line, cx, titleY);
+        titleY += fontHeight;
+      }
+
+      let totR = 0;
+      let totG = 0;
+      let totB = 0;
+
+      for (let c = 0; c < 3; c++) {
+        const intensity = state.enabled[c] ? clamp01(intensities[c]) : 0;
+        const sw = [
+          Math.floor(PURE[c][0] * intensity),
+          Math.floor(PURE[c][1] * intensity),
+          Math.floor(PURE[c][2] * intensity)
+        ];
+
+        const x = startX + c * (box + gap);
+        ctx.fillStyle = rgb(sw);
+        ctx.fillRect(x, yBox, box, box);
+        ctx.strokeStyle = "rgb(80, 80, 80)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, yBox, box, box);
+
+        totR += sw[0];
+        totG += sw[1];
+        totB += sw[2];
+      }
+
+      const xNet = startX + 3 * (box + gap);
+      ctx.fillStyle = rgb([
+        Math.min(255, totR),
+        Math.min(255, totG),
+        Math.min(255, totB)
+      ]);
+      ctx.fillRect(xNet, yBox, box, box);
+      ctx.strokeStyle = "rgb(80, 80, 80)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(xNet, yBox, box, box);
+
+      ctx.fillStyle = "rgb(50, 50, 50)";
+      ctx.font = "700 10px Sans-Serif";
+      const labels = ["R", "G", "B", "net"];
+
+      for (let i = 0; i < labels.length; i++) {
+        const x = startX + i * (box + gap);
+        const lw = ctx.measureText(labels[i]).width;
+        ctx.fillText(labels[i], x + (box - lw) / 2, yBox + box + 12);
+      }
+    }
+
+    function drawWave(xStart, xEnd, yCenter, fn) {
+      const start = Math.ceil(xStart);
+      const end = Math.floor(xEnd);
+
+      if (end <= start) return;
+
+      ctx.beginPath();
+      let first = true;
+
+      for (let x = start; x <= end; x++) {
+        const y = yCenter - fn(x);
+        if (first) {
+          ctx.moveTo(x, y);
+          first = false;
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+
+      ctx.stroke();
+    }
+
+    function drawLabels(yIncident, yR1, yR2, yResultant) {
+      ctx.fillStyle = "rgb(0, 0, 0)";
+      ctx.textBaseline = "alphabetic";
+
+      ctx.font = "700 13px Sans-Serif";
+      ctx.fillText("Incident →", 10, yIncident - 8);
+      ctx.font = "400 10px Sans-Serif";
+      ctx.fillText("white light", 10, yIncident + 6);
+
+      ctx.font = "700 13px Sans-Serif";
+      ctx.fillText("← R₁", 10, yR1 - 8);
+      ctx.font = "400 10px Sans-Serif";
+      ctx.fillText("front-surface", 10, yR1 + 6);
+
+      ctx.font = "700 13px Sans-Serif";
+      ctx.fillText("← R₂", 10, yR2 - 8);
+      ctx.font = "400 10px Sans-Serif";
+      ctx.fillText("back-surface", 10, yR2 + 6);
+
+      ctx.font = "700 13px Sans-Serif";
+      ctx.fillText("← Resultant", 10, yResultant - 8);
+      ctx.font = "400 10px Sans-Serif";
+      ctx.fillText("R₁ + R₂", 10, yResultant + 6);
+    }
+
+    function draw() {
+      resizeCanvas();
+
+      const width = state.cssWidth;
+      const height = state.cssHeight;
+      const thicknessPx = Math.round(state.thickness * pxPerNm);
+      const filmRight = filmLeftX + thicknessPx;
+
+      clearCanvas(width, height);
+
+      // Background material regions.
+      ctx.fillStyle = rgb(TINT_M1);
+      ctx.fillRect(labelColWidth, 0, filmLeftX - labelColWidth, height);
+
+      ctx.fillStyle = rgb(TINT_FILM);
+      ctx.fillRect(filmLeftX, 0, thicknessPx, height);
+
+      ctx.fillStyle = rgb(TINT_M2);
+      ctx.fillRect(filmRight, 0, Math.max(0, width - filmRight), height);
+
+      // Label column.
+      ctx.fillStyle = "rgb(228, 230, 240)";
+      ctx.fillRect(0, 0, labelColWidth, height);
+
+      ctx.strokeStyle = "rgb(180, 184, 200)";
+      ctx.lineWidth = 1;
+      drawLine(labelColWidth, 0, labelColWidth, height);
+
+      ctx.strokeStyle = "rgb(60, 90, 140)";
+      ctx.lineWidth = 1.5;
+      drawLine(filmLeftX, 0, filmLeftX, height);
+      drawLine(filmRight, 0, filmRight, height);
+
+      // Per-color intensities.
+      const IR = new Array(3);
+      const IT = new Array(3);
+      for (let i = 0; i < 3; i++) {
+        IR[i] = reflectedIntensity(WL[i], state.n1, state.nFilm, state.n2, state.thickness);
+        IT[i] = 1 - IR[i];
+      }
+
+      // Top: medium headers and inline swatches.
+      ctx.fillStyle = "rgb(40, 40, 40)";
+      ctx.font = "700 14px Sans-Serif";
+      drawCenteredString(`Material 1   n₁ = ${state.n1.toFixed(2)}`, (labelColWidth + filmLeftX) / 2, 22);
+      drawCenteredString(`Material 2   n₂ = ${state.n2.toFixed(2)}`, (filmRight + width) / 2, 22);
+
+      ctx.font = "700 22px Sans-Serif";
+      drawCenteredString(`Film   n = ${state.nFilm.toFixed(2)}`, (filmLeftX + filmRight) / 2, 32);
+
+      ctx.font = "400 12px Sans-Serif";
+      ctx.fillStyle = "rgb(60, 90, 140)";
+      drawCenteredString(`t = ${Math.round(state.thickness)} nm`, (filmLeftX + filmRight) / 2, 52);
+
+      const swatchY = 90;
+      drawSwatchGroup("Incident", labelColWidth / 2, swatchY, [1, 1, 1]);
+      drawSwatchGroup("Resultant Reflected", (labelColWidth + filmLeftX) / 2, swatchY, IR);
+      drawSwatchGroup("Transmitted from material 2", (filmRight + width) / 2, swatchY, IT);
+
+      // Layout: same visible four wave rows as the Swing version.
+      const topMargin = 160;
+      const bottomBlockH = 120;
+      const waveBandH = Math.max(150, height - topMargin - bottomBlockH);
+
+      const yIncident = topMargin + waveBandH * 1 / 5;
+      const yR1 = topMargin + waveBandH * 2 / 5;
+      const yR2 = topMargin + waveBandH * 3 / 5;
+      const yResultant = topMargin + waveBandH * 4 / 5;
+
+      const rowGap = waveBandH / 5;
+      const ampFull = Math.max(12, Math.min(38, Math.floor(rowGap * 0.42)));
+
+      drawLabels(yIncident, yR1, yR2, yResultant);
+
+      // Axis lines.
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.22)";
+      ctx.lineWidth = 1;
+      [yIncident, yR1, yR2, yResultant].forEach(y => {
+        drawLine(labelColWidth, y, width, y);
+      });
+
+      const phi1 = (state.nFilm > state.n1) ? Math.PI : 0;
+      const phi2 = (state.n2 > state.nFilm) ? Math.PI : 0;
+
+      // Draw waves for each enabled color.
+      for (let c = 0; c < 3; c++) {
+        if (!state.enabled[c]) continue;
+
+        const wl = WL[c];
+
+        // Spatial wavenumbers scale by n: k_medium = n * k_vac.
+        const kVac = 2 * Math.PI / (wl * pxPerNm);
+        const k1 = state.n1 * kVac;
+        const kF = state.nFilm * kVac;
+        const k3 = state.n2 * kVac;
+
+        // Temporal angular frequency is conserved through all media.
+        const omega = V_SCROLL * kVac;
+
+        const tNow = state.time;
+        const FL = filmLeftX;
+        const FR = filmRight;
+        const thickPx = thicknessPx;
+        const localPhi1 = phi1;
+        const localPhi2 = phi2;
+        const ampF = ampFull;
+
+        ctx.strokeStyle = rgba(PURE[c], 0.82);
+        ctx.lineWidth = 2.3;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+
+        // Row 1: incident wave, continuous across all three regions.
+        drawWave(labelColWidth, FL, yIncident, x =>
+          ampF * Math.sin(k1 * x - omega * tNow)
+        );
+
+        const phFL = k1 * FL - omega * tNow;
+
+        drawWave(FL, FR, yIncident, x =>
+          ampF * Math.sin(phFL + kF * (x - FL))
+        );
+
+        const phFR = phFL + kF * thickPx;
+
+        drawWave(FR, width, yIncident, x =>
+          ampF * Math.sin(phFR + k3 * (x - FR))
+        );
+
+        const aRef = ampF * R_AMP_COEFF;
+        const roundTrip = 2 * kF * thickPx;
+
+        // Row 2: R1 reflects from the front surface and travels left in material 1.
+        drawWave(labelColWidth, FL, yR1, x =>
+          aRef * Math.sin(k1 * (2 * FL - x) - omega * tNow + localPhi1)
+        );
+
+        // Row 3: R2 travels inside the film, reflects at the back surface, then exits left.
+        drawWave(FL, FR, yR2, x => {
+          const pBack = k1 * FL + kF * thickPx - omega * tNow;
+          return aRef * Math.sin(pBack + localPhi2 + kF * (FR - x));
+        });
+
+        drawWave(labelColWidth, FL, yR2, x =>
+          aRef * Math.sin(
+            k1 * (2 * FL - x) - omega * tNow + localPhi2 + roundTrip
+          )
+        );
+
+        // Row 4: resultant reflected wave, R1 + R2, left of the film.
+        drawWave(labelColWidth, FL, yResultant, x => {
+          const basePh = k1 * (2 * FL - x) - omega * tNow;
+          return aRef * Math.sin(basePh + localPhi1)
+               + aRef * Math.sin(basePh + localPhi2 + roundTrip);
+        });
+      }
+
+      // Bottom readout.
+      const yReadout = height - bottomBlockH + 20;
+
+      ctx.fillStyle = "rgb(0, 0, 0)";
+      ctx.font = "700 12px Sans-Serif";
+      ctx.fillText(
+        `I_R(red) = ${IR[0].toFixed(2)}     I_R(green) = ${IR[1].toFixed(2)}     I_R(blue) = ${IR[2].toFixed(2)}`,
+        labelColWidth + 10,
+        yReadout
+      );
+
+      ctx.fillText(
+        `I_T(red) = ${IT[0].toFixed(2)}     I_T(green) = ${IT[1].toFixed(2)}     I_T(blue) = ${IT[2].toFixed(2)}`,
+        labelColWidth + 10,
+        yReadout + 22
+      );
+
+      ctx.font = "400 11px Sans-Serif";
+      ctx.fillStyle = "rgb(60, 60, 60)";
+
+      const r1Phase = phi1 > 0 ? "π" : "0";
+      const r1Comp = state.nFilm > state.n1 ? ">" : "≤";
+      const r2Phase = phi2 > 0 ? "π" : "0";
+      const r2Comp = state.n2 > state.nFilm ? ">" : "≤";
+      const twoNT = 2 * state.nFilm * state.thickness;
+
+      ctx.fillText(
+        `Phase shifts:   R₁ = ${r1Phase}   (n_film ${r1Comp} n₁)         R₂ = ${r2Phase}   (n₂ ${r2Comp} n_film)         2 n t = ${twoNT.toFixed(0)} nm`,
+        labelColWidth + 10,
+        yReadout + 46
+      );
+
+      ctx.font = "400 10px Sans-Serif";
+      ctx.fillStyle = "rgb(140, 140, 140)";
+      ctx.fillText(
+        "(Spacebar toggles pause   •   in vacuum all colors scroll together; light slows by 1/n inside each medium)",
+        labelColWidth + 10,
+        yReadout + 68
+      );
+    }
+
+    let lastFrame = performance.now();
+
+    function frame(now) {
+      const dt = now - lastFrame;
+      lastFrame = now;
+
+      if (state.running) {
+        // Java Timer ran every 30 ms and advanced by speed each tick.
+        state.time += state.speed * dt / 30.0;
+      }
+
+      draw();
+      requestAnimationFrame(frame);
+    }
+
+    updateFromControls();
+    resizeCanvas();
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
